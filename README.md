@@ -1,62 +1,73 @@
-# MLX Whisper Transcription Tool
+# MLX Whisper Transcriber for macOS
 
-This tool uses `mlx-whisper` (Whisper V3) to transcribe audio files on macOS using Apple Silicon GPU.
+A standalone macOS GUI application for OpenAI's Whisper model, optimized for Apple Silicon using [MLX](https://github.com/ml-explore/mlx).
 
-## Distribution Note
+![App Icon](icon_master.png)
 
-This application depends on `ffmpeg` being installed on the user's system. Due to this dependency and licensing complexities, **this application cannot be distributed via the Mac App Store**. It is intended for local use or distribution via direct download (e.g., DMG, Zip).
+## Features
+
+*   **Apple Silicon Optimized**: Runs locally on your Mac's GPU/NPU using MLX.
+*   **Offline Capable**: Supports loading models from local folders (great for corporate environments).
+*   **User Friendly**: Simple GUI with drag-and-drop support (via file browse).
+*   **Language Support**: Auto-detection or manual selection (English, Japanese, etc.).
+*   **Progress Tracking**: Real-time logs and progress bar.
 
 ## Prerequisites
 
-1.  **macOS with Apple Silicon** (M1/M2/M3/M4).
-2.  **Python 3.8+**.
-3.  **uv**: Fast Python package installer and resolver.
-    ```bash
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    ```
-4.  **FFmpeg**: Required for audio processing.
+*   **macOS with Apple Silicon** (M1/M2/M3/M4).
+*   **FFmpeg**: Required for audio processing.
     ```bash
     brew install ffmpeg
     ```
 
-## Installation
+## Installation & Usage
 
-1.  Clone this repository or navigate to the folder.
-2.  Create a virtual environment and install dependencies using `uv`:
+### Option 1: Run from Source (Developers)
+
+1.  **Install uv** (Fast Python package manager):
     ```bash
-    # Create a virtual environment
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+
+2.  **Clone and Setup**:
+    ```bash
+    git clone https://github.com/necoha/mlx-whisper-mac.git
+    cd mlx-whisper-mac
+    
+    # Create virtual environment and install dependencies
     uv venv
-
-    # Activate the virtual environment
     source .venv/bin/activate
-
-    # Install packages
     uv pip install -r requirements.txt
     ```
 
-## Usage
+3.  **Run the App**:
+    ```bash
+    python gui.py
+    ```
 
-### GUI Application (Recommended)
+### Option 2: Build Standalone App
 
-Run the GUI application:
+You can package the application into a standard macOS `.app` bundle.
 
-```bash
-python gui.py
-```
+1.  Follow the "Run from Source" steps to set up your environment.
+2.  Run the build script:
+    ```bash
+    python build.py
+    ```
+3.  The application will be created in the `dist/` folder:
+    *   `dist/MLXWhisperTranscriber.app`
 
-1.  Click **"Browse"** to select an audio file.
-2.  Click **"Start Transcription"**.
-3.  Wait for the process to complete. The status will be shown in the log area.
-4.  The transcription will be saved as a `.txt` file in the same folder as the audio file.
+You can drag this app to your Applications folder. **Note:** You still need `ffmpeg` installed via Homebrew.
 
-### CLI Tool
+## Troubleshooting
 
-Run the script with the path to your audio file:
+*   **"FFmpeg not found"**: Make sure you installed it with `brew install ffmpeg`. The app looks in `/opt/homebrew/bin`.
+*   **"App is damaged"**: If you move the app to another computer, you might need to remove the quarantine attribute:
+    ```bash
+    xattr -cr /Applications/MLXWhisperTranscriber.app
+    ```
 
-```bash
-python transcribe.py path/to/your/audio_file.mp3
-```
+## License
 
-## Model
+MIT
 
-This tool uses `mlx-community/whisper-large-v3` by default. The model will be downloaded automatically on the first run.
