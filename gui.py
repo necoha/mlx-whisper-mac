@@ -11,6 +11,7 @@ import subprocess
 import multiprocessing
 import sys
 import queue
+import json
 from huggingface_hub import try_to_load_from_cache
 
 # Inject system trust store for corporate proxies/SSL inspection
@@ -18,6 +19,8 @@ truststore.inject_into_ssl()
 
 # Add Homebrew paths to PATH for macOS app bundles (GUI apps don't inherit shell PATH)
 os.environ["PATH"] += os.pathsep + "/opt/homebrew/bin" + os.pathsep + "/usr/local/bin"
+
+CONFIG_FILE = os.path.expanduser("~/.mlx_whisper_config.json")
 
 # Configuration
 ctk.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
@@ -246,6 +249,50 @@ class App(ctk.CTk):
         self.result_queue = None
         # Remember last visited directory for models
         self.last_model_dir = os.path.join(os.getcwd(), "models") if os.path.exists(os.path.join(os.getcwd(), "models")) else os.getcwd()
+        
+        # Load saved configuration
+        self.load_config()
+
+    def load_config(self):
+        """Load configuration from JSON file."""
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r") as f:
+                    config = json.load(f)
+                    
+                # Restore last model directory
+                if "last_model_dir" in config and os.path.isdir(config["last_model_dir"]):
+                    self.last_model_dir = config["last_model_dir"]
+                
+                # Restore last selected model
+                if "last_model" in config:
+                    last_model = config["last_model"]
+                    # If it's a local path, ensure it exists and add to dropdown
+                    if os.path.isdir(last_model):
+                        if last_model not in self.model_select_menu._values:
+                            current_values = self.model_select_menu._values
+                            self.model_select_menu.configure(values=[last_model] + current_values)
+                        self.model_var.set(last_model)
+                        self.on_model_change(last_model)
+                    # If it's a HF repo, just set it
+                    elif last_model in self.model_select_menu._values:
+                        self.model_var.set(last_model)
+                        self.on_model_change(last_model)
+                        
+            except Exception as e:
+                print(f"Failed to load config: {e}")
+
+    def save_config(self):
+        """Save configuration to JSON file."""
+        config = {
+            "last_model_dir": self.last_model_dir,
+            "last_model": self.model_var.get()
+        }
+        try:
+            with open(CONFIG_FILE, "w") as f:
+                json.dump(config, f)
+        except Exception as e:
+            print(f"Failed to save config: {e}")
 
     def select_local_model(self):
         folder_path = filedialog.askdirectory(title="Select Model Folder", initialdir=self.last_model_dir)
@@ -254,6 +301,7 @@ class App(ctk.CTk):
         
         # Update last visited directory (parent of the selected folder)
         self.last_model_dir = os.path.dirname(folder_path)
+        self.save_config()
 
         # Check if config.json exists, if not search subdirectories
         found_paths = []
@@ -306,6 +354,9 @@ class App(ctk.CTk):
         messagebox.showinfo("Help: Manual Download", help_text)
 
     def on_model_change(self, model_name):
+        # Save the new selection
+        self.save_config()
+
         # Update URL/Path display
         if os.path.isdir(model_name):
             self.current_source = model_name
