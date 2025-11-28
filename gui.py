@@ -194,6 +194,14 @@ class App(ctk.CTk):
         self.model_info_label = ctk.CTkLabel(self.model_frame, text="", text_color="gray", font=ctk.CTkFont(size=12))
         self.model_info_label.grid(row=2, column=0, columnspan=5, padx=(0, 10), pady=(5, 0), sticky="w")
 
+        # Variables
+        self.selected_file = None
+        self.is_transcribing = False
+        self.process = None
+        self.result_queue = None
+        # Remember last visited directory for models
+        self.last_model_dir = os.path.join(os.getcwd(), "models") if os.path.exists(os.path.join(os.getcwd(), "models")) else os.getcwd()
+
         # Initial check
         self.on_model_change(self.model_var.get())
 
@@ -241,14 +249,6 @@ class App(ctk.CTk):
         # Progress Bar (Indeterminate)
         self.progress_bar = ctk.CTkProgressBar(self.button_frame, width=400, mode="indeterminate")
         # self.progress_bar.pack(pady=10) # Packed only when running
-
-        # Variables
-        self.selected_file = None
-        self.is_transcribing = False
-        self.process = None
-        self.result_queue = None
-        # Remember last visited directory for models
-        self.last_model_dir = os.path.join(os.getcwd(), "models") if os.path.exists(os.path.join(os.getcwd(), "models")) else os.getcwd()
         
         # Load saved configuration
         self.load_config()
