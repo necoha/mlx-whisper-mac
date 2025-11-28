@@ -3,14 +3,27 @@ import os
 import shutil
 import customtkinter
 import subprocess
+import importlib.util
 
 # Get customtkinter path to include its data files
 ctk_path = os.path.dirname(customtkinter.__file__)
 
+# Get mlx path to include metallib
+mlx_spec = importlib.util.find_spec("mlx")
+mlx_path = mlx_spec.submodule_search_locations[0]
+mlx_metallib = os.path.join(mlx_path, "lib", "mlx.metallib")
+
+# Create a copy named default.metallib for compatibility if needed
+default_metallib_path = "default.metallib"
+if os.path.exists(mlx_metallib):
+    shutil.copy2(mlx_metallib, default_metallib_path)
+else:
+    print(f"Warning: mlx.metallib not found at {mlx_metallib}")
+
 app_name = "MLXWhisperTranscriber"
 
 print("Building Application Bundle...")
-PyInstaller.__main__.run([
+args = [
     'gui.py',
     '--name=MLXWhisperTranscriber',
     '--windowed',  # No terminal window
@@ -24,7 +37,20 @@ PyInstaller.__main__.run([
     '--collect-all=mlx',
     '--collect-all=mlx_whisper',
     f'--add-data={ctk_path}:customtkinter',  # Include customtkinter themes/images
-])
+]
+
+if os.path.exists(mlx_metallib):
+    args.append(f'--add-data={mlx_metallib}:.') # Add mlx.metallib to root
+    args.append(f'--add-data={mlx_metallib}:mlx/lib') # Add mlx.metallib to mlx/lib
+
+if os.path.exists(default_metallib_path):
+    args.append(f'--add-data={default_metallib_path}:.') # Add default.metallib to root
+
+PyInstaller.__main__.run(args)
+
+# Clean up temp file
+if os.path.exists(default_metallib_path):
+    os.remove(default_metallib_path)
 
 print("Creating DMG Installer...")
 
