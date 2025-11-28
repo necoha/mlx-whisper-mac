@@ -40,17 +40,39 @@ args = [
 ]
 
 if os.path.exists(mlx_metallib):
-    args.append(f'--add-data={mlx_metallib}:.') # Add mlx.metallib to root
-    args.append(f'--add-data={mlx_metallib}:mlx/lib') # Add mlx.metallib to mlx/lib
+    # args.append(f'--add-data={mlx_metallib}:.') # Add mlx.metallib to root
+    # args.append(f'--add-data={mlx_metallib}:mlx/lib') # Add mlx.metallib to mlx/lib
+    pass
 
 if os.path.exists(default_metallib_path):
-    args.append(f'--add-data={default_metallib_path}:.') # Add default.metallib to root
+    # args.append(f'--add-data={default_metallib_path}:.') # Add default.metallib to root
+    pass
 
 PyInstaller.__main__.run(args)
 
 # Clean up temp file
 if os.path.exists(default_metallib_path):
     os.remove(default_metallib_path)
+
+# Post-processing: Create symlinks for metallib to save space
+dist_dir = "dist"
+resources_dir = os.path.join(dist_dir, f"{app_name}.app", "Contents", "Resources")
+mlx_lib_dir = os.path.join(resources_dir, "mlx", "lib")
+source_metallib = os.path.join(mlx_lib_dir, "mlx.metallib")
+
+if os.path.exists(source_metallib):
+    print("Optimizing bundle size: Creating symlinks for metallib...")
+    # Create default.metallib symlink
+    target_default = os.path.join(resources_dir, "default.metallib")
+    if os.path.exists(target_default):
+        os.remove(target_default)
+    os.symlink(os.path.join("mlx", "lib", "mlx.metallib"), target_default)
+    
+    # Create mlx.metallib symlink (just in case)
+    target_mlx = os.path.join(resources_dir, "mlx.metallib")
+    if os.path.exists(target_mlx):
+        os.remove(target_mlx)
+    os.symlink(os.path.join("mlx", "lib", "mlx.metallib"), target_mlx)
 
 print("Creating DMG Installer...")
 
