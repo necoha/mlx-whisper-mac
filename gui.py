@@ -202,7 +202,13 @@ class App(ctk.CTk):
         # Remember last visited directory for models
         self.last_model_dir = os.path.join(os.getcwd(), "models") if os.path.exists(os.path.join(os.getcwd(), "models")) else os.getcwd()
 
-        # Initial check
+        # Load saved configuration (before initial on_model_change to avoid overwriting)
+        self.load_config()
+
+        # Initial check (if load_config didn't trigger it, or to ensure UI update)
+        # If load_config set a model, on_model_change was already called.
+        # If not, we call it with the default.
+        # To be safe, we can just call it. It's idempotent-ish (updates UI).
         self.on_model_change(self.model_var.get())
 
         # Options Frame (Language)
@@ -250,9 +256,6 @@ class App(ctk.CTk):
         self.progress_bar = ctk.CTkProgressBar(self.button_frame, width=400, mode="indeterminate")
         # self.progress_bar.pack(pady=10) # Packed only when running
         
-        # Load saved configuration
-        self.load_config()
-
     def load_config(self):
         """Load configuration from JSON file."""
         if os.path.exists(CONFIG_FILE):
