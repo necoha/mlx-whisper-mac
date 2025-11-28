@@ -30,6 +30,7 @@ def transcription_worker(result_queue, audio_path, model_name, language_code, la
     """
     import sys
     import os
+    import time
     # Re-import necessary modules in the new process
     import mlx_whisper
     import truststore
@@ -71,10 +72,13 @@ def transcription_worker(result_queue, audio_path, model_name, language_code, la
             print("Language: Auto-detect")
 
         # Run transcription
+        start_time = time.time()
         result = mlx_whisper.transcribe(**transcribe_args)
+        end_time = time.time()
+        duration = end_time - start_time
         
         # Send result back
-        result_queue.put(("success", result["text"]))
+        result_queue.put(("success", (result["text"], duration)))
         
     except Exception as e:
         result_queue.put(("error", str(e)))
@@ -415,7 +419,16 @@ class App(ctk.CTk):
                 # self.reset_ui() # Don't reset immediately, might be just empty queue for a moment
                 self.after(100, self.check_queue)
 
-    def handle_success(self, text):
+    def handle_success(self, content):
+        text, duration = content
+        
+        # Format duration
+        minutes, seconds = divmod(duration, 60)
+        if minutes > 0:
+            time_str = f"{int(minutes)}m {int(seconds)}s"
+        else:
+            time_str = f"{duration:.1f}s"
+
         # Save to file
         base_name = os.path.splitext(self.selected_file)[0]
         output_path = f"{base_name}.txt"
@@ -424,8 +437,9 @@ class App(ctk.CTk):
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(text)
             self.log_message(f"SUCCESS: Transcription saved to:\n{output_path}")
+            self.log_message(f"Time taken: {time_str}")
             self.show_transcription_result(text)
-            messagebox.showinfo("Success", "Transcription completed successfully!")
+            messagebox.showinfo("Success", f"Transcription completed successfully!\nTime taken: {time_str}")
         except Exception as e:
             self.log_message(f"Error saving file: {e}")
             messagebox.showerror("Error", f"Could not save file: {e}")
