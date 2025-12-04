@@ -14,9 +14,8 @@ mlx_path = mlx_spec.submodule_search_locations[0]
 mlx_metallib = os.path.join(mlx_path, "lib", "mlx.metallib")
 mlx_libmlx = os.path.join(mlx_path, "lib", "libmlx.dylib")
 
-# macOS 15 compatible files (downloaded from PyPI)
-mlx_metallib_macos15 = "mlx_macos15.metallib"
-mlx_libmlx_macos15 = "libmlx_macos15.dylib"
+# macOS 15 compatible mlx package directory (downloaded from PyPI)
+macos15_mlx_src = "macos15_mlx"
 
 # Create a copy named default.metallib for compatibility if needed
 default_metallib_path = "default.metallib"
@@ -70,22 +69,15 @@ source_metallib = os.path.join(mlx_lib_dir, "mlx.metallib")
 
 print("Setting up dual macOS version support...")
 
-# Create macos15 directory for backward compatibility files
-macos15_dir = os.path.join(resources_dir, "macos15")
-os.makedirs(macos15_dir, exist_ok=True)
-
-# Copy macOS 15 compatible metallib and dylib
-if os.path.exists(mlx_metallib_macos15):
-    shutil.copy2(mlx_metallib_macos15, os.path.join(macos15_dir, "mlx.metallib"))
-    print(f"  Copied macOS 15 metallib to: {macos15_dir}")
+# Copy complete macOS 15 mlx package to Resources
+macos15_mlx_dest = os.path.join(resources_dir, "macos15_mlx")
+if os.path.exists(macos15_mlx_src):
+    if os.path.exists(macos15_mlx_dest):
+        shutil.rmtree(macos15_mlx_dest)
+    shutil.copytree(macos15_mlx_src, macos15_mlx_dest)
+    print(f"  Copied macOS 15 mlx package to: {macos15_mlx_dest}")
 else:
-    print(f"  Warning: macOS 15 metallib not found: {mlx_metallib_macos15}")
-
-if os.path.exists(mlx_libmlx_macos15):
-    shutil.copy2(mlx_libmlx_macos15, os.path.join(macos15_dir, "libmlx.dylib"))
-    print(f"  Copied macOS 15 libmlx to: {macos15_dir}")
-else:
-    print(f"  Warning: macOS 15 libmlx not found: {mlx_libmlx_macos15}")
+    print(f"  Warning: macOS 15 mlx package not found: {macos15_mlx_src}")
 
 if os.path.exists(source_metallib):
     print("Ensuring metallib files are in place...")

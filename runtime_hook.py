@@ -1,7 +1,7 @@
 """
 Runtime hook for PyInstaller.
 This runs BEFORE the main application and any imports.
-Detects macOS version and replaces mlx libraries if needed.
+Detects macOS version and replaces mlx package if needed.
 """
 import os
 import sys
@@ -22,23 +22,8 @@ def get_macos_version():
     except:
         return 15  # Default to macOS 15 if detection fails
 
-def find_mlx_lib_dirs(base_dir):
-    """Find all directories containing mlx libraries."""
-    mlx_dirs = []
-    for root, dirs, files in os.walk(base_dir):
-        if 'libmlx.dylib' in files or 'mlx.metallib' in files:
-            mlx_dirs.append(root)
-        # Also check for symlinks
-        for f in files:
-            if f in ('libmlx.dylib', 'mlx.metallib'):
-                full_path = os.path.join(root, f)
-                if os.path.islink(full_path):
-                    mlx_dirs.append(root)
-                    break
-    return list(set(mlx_dirs))
-
 def setup_mlx_libraries():
-    """Replace mlx libraries based on macOS version."""
+    """Replace entire mlx package based on macOS version."""
     if not getattr(sys, 'frozen', False):
         log("Not frozen, skipping")
         return
@@ -51,14 +36,13 @@ def setup_mlx_libraries():
         log("macOS 26+, using bundled libraries")
         return
     
-    log("macOS < 26, need to replace mlx libraries")
+    log("macOS < 26, need to replace mlx package")
     
     # Get app bundle paths
     bundle_dir = sys._MEIPASS
     log(f"_MEIPASS: {bundle_dir}")
     
     # Find the app bundle root (.app/Contents)
-    # _MEIPASS is typically .app/Contents/Frameworks or .app/Contents/Resources
     if 'Contents' in bundle_dir:
         contents_dir = bundle_dir
         while os.path.basename(contents_dir) != 'Contents' and contents_dir != '/':
@@ -68,82 +52,87 @@ def setup_mlx_libraries():
     
     log(f"Contents dir: {contents_dir}")
     
-    # Look for macos15 directory in multiple locations
+    # Look for macos15_mlx directory (contains complete mlx package for macOS 15)
     possible_macos15_dirs = [
-        os.path.join(bundle_dir, "macos15"),
-        os.path.join(contents_dir, "Resources", "macos15"),
-        os.path.join(contents_dir, "Frameworks", "macos15"),
+        os.path.join(bundle_dir, "macos15_mlx"),
+        os.path.join(contents_dir, "Resources", "macos15_mlx"),
+        os.path.join(contents_dir, "Frameworks", "macos15_mlx"),
     ]
     
-    macos15_dir = None
+    macos15_mlx_dir = None
     for d in possible_macos15_dirs:
         log(f"Checking: {d} exists={os.path.exists(d)}")
         if os.path.exists(d):
-            macos15_dir = d
+            macos15_mlx_dir = d
             break
     
-    if not macos15_dir:
-        log("ERROR: macos15 directory not found!")
-        # List what's in _MEIPASS
+    if not macos15_mlx_dir:
+        log("ERROR: macos15_mlx directory not found!")
         try:
-            log(f"Contents of _MEIPASS: {os.listdir(bundle_dir)[:20]}...")
+            log(f"Contents of _MEIPASS: {os.listdir(bundle_dir)[:30]}...")
         except Exception as e:
             log(f"Could not list _MEIPASS: {e}")
         return
     
-    log(f"Found macos15 dir: {macos15_dir}")
+    log(f"Found macos15_mlx dir: {macos15_mlx_dir}")
     
-    # Source files (macOS 15 compatible)
-    src_metallib = os.path.join(macos15_dir, "mlx.metallib")
-    src_libmlx = os.path.join(macos15_dir, "libmlx.dylib")
-    
-    log(f"src_metallib exists: {os.path.exists(src_metallib)}")
-    log(f"src_libmlx exists: {os.path.exists(src_libmlx)}")
-    
-    if not os.path.exists(src_metallib) or not os.path.exists(src_libmlx):
-        log("ERROR: Source files not found in macos15 directory!")
+    # Source mlx directory (complete macOS 15 compatible mlx package)
+    src_mlx_dir = os.path.join(macos15_mlx_dir, "mlx")
+    if not os.path.exists(src_mlx_dir):
+        log(f"ERROR: mlx directory not found in {macos15_mlx_dir}")
         return
     
-    # Find all mlx lib directories in the bundle
-    mlx_dirs = find_mlx_lib_dirs(contents_dir)
-    log(f"Found mlx lib dirs: {mlx_dirs}")
+    log(f"Source mlx dir: {src_mlx_dir}")
+    
+    # Find target mlx directories in the bundle
+    target_mlx_dirs = []
+    for base in [contents_dir, bundle_dir]:
+        for root, dirs, files in os.walk(base):
+            if os.path.basename(root) == 'mlx' and 'core.cpython-312-darwin.so' in files:
+                target_mlx_dirs.append(root)
     
     # Also check common locations
-    common_mlx_paths = [
-        os.path.join(contents_dir, "Resources", "mlx", "lib"),
-        os.path.join(contents_dir, "Frameworks", "mlx", "lib"),
-        os.path.join(bundle_dir, "mlx", "lib"),
+    common_paths = [
+        os.path.join(contents_dir, "Frameworks", "mlx"),
+        os.path.join(contents_dir, "Resources", "mlx"),
+        os.path.join(bundle_dir, "mlx"),
     ]
-    for p in common_mlx_paths:
-        if os.path.exists(p) and p not in mlx_dirs:
-            mlx_dirs.append(p)
+    for p in common_paths:
+        if os.path.exists(p) and p not in target_mlx_dirs:
+            target_mlx_dirs.append(p)
     
-    # Replace files in all found directories
+    log(f"Found target mlx dirs: {target_mlx_dirs}")
+    
+    # Replace files in each target directory
     replaced_count = 0
-    for mlx_dir in mlx_dirs:
-        log(f"Processing: {mlx_dir}")
+    for target_dir in target_mlx_dirs:
+        log(f"Processing target: {target_dir}")
         
-        # Replace metallib
-        target_metallib = os.path.join(mlx_dir, "mlx.metallib")
-        if os.path.exists(target_metallib) or os.path.islink(target_metallib):
-            try:
-                os.remove(target_metallib)
-                shutil.copy2(src_metallib, target_metallib)
-                log(f"  Replaced metallib: {target_metallib}")
-                replaced_count += 1
-            except Exception as e:
-                log(f"  ERROR replacing metallib: {e}")
+        # Key files to replace
+        files_to_replace = [
+            ("core.cpython-312-darwin.so", "core.cpython-312-darwin.so"),
+            ("lib/libmlx.dylib", "lib/libmlx.dylib"),
+            ("lib/mlx.metallib", "lib/mlx.metallib"),
+        ]
         
-        # Replace libmlx
-        target_libmlx = os.path.join(mlx_dir, "libmlx.dylib")
-        if os.path.exists(target_libmlx) or os.path.islink(target_libmlx):
-            try:
-                os.remove(target_libmlx)
-                shutil.copy2(src_libmlx, target_libmlx)
-                log(f"  Replaced libmlx: {target_libmlx}")
-                replaced_count += 1
-            except Exception as e:
-                log(f"  ERROR replacing libmlx: {e}")
+        for src_rel, target_rel in files_to_replace:
+            src_file = os.path.join(src_mlx_dir, src_rel)
+            target_file = os.path.join(target_dir, target_rel)
+            
+            if not os.path.exists(src_file):
+                log(f"  Source not found: {src_file}")
+                continue
+            
+            if os.path.exists(target_file) or os.path.islink(target_file):
+                try:
+                    os.remove(target_file)
+                    shutil.copy2(src_file, target_file)
+                    log(f"  Replaced: {target_rel}")
+                    replaced_count += 1
+                except Exception as e:
+                    log(f"  ERROR replacing {target_rel}: {e}")
+            else:
+                log(f"  Target not found: {target_file}")
     
     log(f"Replacement complete. {replaced_count} files replaced.")
 
