@@ -3,13 +3,27 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import threading
 import os
+import sys
+
+# Set up MLX metallib path BEFORE importing mlx_whisper
+# This is required for PyInstaller bundles where the library path is different
+if getattr(sys, 'frozen', False):
+    # Running as a PyInstaller bundle
+    bundle_dir = sys._MEIPASS
+    metallib_path = os.path.join(bundle_dir, "mlx", "lib", "mlx.metallib")
+    if os.path.exists(metallib_path):
+        os.environ["MLX_METALLIB_PATH"] = metallib_path
+    # Also try alternative locations
+    alt_metallib_path = os.path.join(bundle_dir, "default.metallib")
+    if os.path.exists(alt_metallib_path) and "MLX_METALLIB_PATH" not in os.environ:
+        os.environ["MLX_METALLIB_PATH"] = alt_metallib_path
+
 import mlx_whisper
 import shutil
 import truststore
 import webbrowser
 import subprocess
 import multiprocessing
-import sys
 import queue
 import json
 from huggingface_hub import try_to_load_from_cache
@@ -34,6 +48,17 @@ def transcription_worker(result_queue, audio_path, model_name, language_code, la
     import sys
     import os
     import time
+    
+    # Set up MLX metallib path BEFORE importing mlx_whisper in subprocess
+    if getattr(sys, 'frozen', False):
+        bundle_dir = sys._MEIPASS
+        metallib_path = os.path.join(bundle_dir, "mlx", "lib", "mlx.metallib")
+        if os.path.exists(metallib_path):
+            os.environ["MLX_METALLIB_PATH"] = metallib_path
+        alt_metallib_path = os.path.join(bundle_dir, "default.metallib")
+        if os.path.exists(alt_metallib_path) and "MLX_METALLIB_PATH" not in os.environ:
+            os.environ["MLX_METALLIB_PATH"] = alt_metallib_path
+    
     # Re-import necessary modules in the new process
     import mlx_whisper
     import truststore
