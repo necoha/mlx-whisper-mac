@@ -8,10 +8,15 @@ import importlib.util
 # Get customtkinter path to include its data files
 ctk_path = os.path.dirname(customtkinter.__file__)
 
-# Get mlx path to include metallib
+# Get mlx path to include metallib (for macOS 26+)
 mlx_spec = importlib.util.find_spec("mlx")
 mlx_path = mlx_spec.submodule_search_locations[0]
 mlx_metallib = os.path.join(mlx_path, "lib", "mlx.metallib")
+mlx_libmlx = os.path.join(mlx_path, "lib", "libmlx.dylib")
+
+# macOS 15 compatible files (downloaded from PyPI)
+mlx_metallib_macos15 = "mlx_macos15.metallib"
+mlx_libmlx_macos15 = "libmlx_macos15.dylib"
 
 # Create a copy named default.metallib for compatibility if needed
 default_metallib_path = "default.metallib"
@@ -37,6 +42,7 @@ args = [
     '--collect-all=mlx',
     '--collect-all=mlx_whisper',
     f'--add-data={ctk_path}:customtkinter',  # Include customtkinter themes/images
+    '--runtime-hook=runtime_hook.py',  # Run before main app to setup mlx libraries
 ]
 
 if os.path.exists(mlx_metallib):
@@ -57,8 +63,29 @@ if os.path.exists(default_metallib_path):
 # Post-processing: Copy metallib files to ensure they are found
 dist_dir = "dist"
 resources_dir = os.path.join(dist_dir, f"{app_name}.app", "Contents", "Resources")
+frameworks_dir = os.path.join(dist_dir, f"{app_name}.app", "Contents", "Frameworks")
 mlx_lib_dir = os.path.join(resources_dir, "mlx", "lib")
+frameworks_mlx_lib_dir = os.path.join(frameworks_dir, "mlx", "lib")
 source_metallib = os.path.join(mlx_lib_dir, "mlx.metallib")
+
+print("Setting up dual macOS version support...")
+
+# Create macos15 directory for backward compatibility files
+macos15_dir = os.path.join(resources_dir, "macos15")
+os.makedirs(macos15_dir, exist_ok=True)
+
+# Copy macOS 15 compatible metallib and dylib
+if os.path.exists(mlx_metallib_macos15):
+    shutil.copy2(mlx_metallib_macos15, os.path.join(macos15_dir, "mlx.metallib"))
+    print(f"  Copied macOS 15 metallib to: {macos15_dir}")
+else:
+    print(f"  Warning: macOS 15 metallib not found: {mlx_metallib_macos15}")
+
+if os.path.exists(mlx_libmlx_macos15):
+    shutil.copy2(mlx_libmlx_macos15, os.path.join(macos15_dir, "libmlx.dylib"))
+    print(f"  Copied macOS 15 libmlx to: {macos15_dir}")
+else:
+    print(f"  Warning: macOS 15 libmlx not found: {mlx_libmlx_macos15}")
 
 if os.path.exists(source_metallib):
     print("Ensuring metallib files are in place...")

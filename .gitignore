@@ -7,3 +7,6 @@ __pycache__/
 icon_master.png
 AppIcon.iconset/
 *.pyc
+# Large binary files - download from release assets
+*.metallib
+libmlx_macos15.dylib

@@ -5,18 +5,8 @@ import threading
 import os
 import sys
 
-# Set up MLX metallib path BEFORE importing mlx_whisper
-# This is required for PyInstaller bundles where the library path is different
-if getattr(sys, 'frozen', False):
-    # Running as a PyInstaller bundle
-    bundle_dir = sys._MEIPASS
-    metallib_path = os.path.join(bundle_dir, "mlx", "lib", "mlx.metallib")
-    if os.path.exists(metallib_path):
-        os.environ["MLX_METALLIB_PATH"] = metallib_path
-    # Also try alternative locations
-    alt_metallib_path = os.path.join(bundle_dir, "default.metallib")
-    if os.path.exists(alt_metallib_path) and "MLX_METALLIB_PATH" not in os.environ:
-        os.environ["MLX_METALLIB_PATH"] = alt_metallib_path
+# Note: mlx library setup is handled by runtime_hook.py (PyInstaller runtime hook)
+# which runs before any imports and replaces libraries based on macOS version
 
 import mlx_whisper
 import shutil
