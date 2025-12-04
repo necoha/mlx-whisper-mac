@@ -54,25 +54,27 @@ PyInstaller.__main__.run(args)
 if os.path.exists(default_metallib_path):
     os.remove(default_metallib_path)
 
-# Post-processing: Create symlinks for metallib to save space
+# Post-processing: Copy metallib files to ensure they are found
 dist_dir = "dist"
 resources_dir = os.path.join(dist_dir, f"{app_name}.app", "Contents", "Resources")
 mlx_lib_dir = os.path.join(resources_dir, "mlx", "lib")
 source_metallib = os.path.join(mlx_lib_dir, "mlx.metallib")
 
 if os.path.exists(source_metallib):
-    print("Optimizing bundle size: Creating symlinks for metallib...")
-    # Create default.metallib symlink
+    print("Ensuring metallib files are in place...")
+    # Copy to root as default.metallib (required by mlx)
     target_default = os.path.join(resources_dir, "default.metallib")
-    if os.path.exists(target_default):
+    if os.path.exists(target_default) or os.path.islink(target_default):
         os.remove(target_default)
-    os.symlink(os.path.join("mlx", "lib", "mlx.metallib"), target_default)
+    shutil.copy2(source_metallib, target_default)
+    print(f"  Copied: {target_default}")
     
-    # Create mlx.metallib symlink (just in case)
+    # Copy to root as mlx.metallib (just in case)
     target_mlx = os.path.join(resources_dir, "mlx.metallib")
-    if os.path.exists(target_mlx):
+    if os.path.exists(target_mlx) or os.path.islink(target_mlx):
         os.remove(target_mlx)
-    os.symlink(os.path.join("mlx", "lib", "mlx.metallib"), target_mlx)
+    shutil.copy2(source_metallib, target_mlx)
+    print(f"  Copied: {target_mlx}")
 
 print("Creating DMG Installer...")
 
