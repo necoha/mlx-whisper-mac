@@ -16,7 +16,7 @@ import subprocess
 import multiprocessing
 import queue
 import json
-from huggingface_hub import try_to_load_from_cache
+from huggingface_hub import try_to_load_from_cache, scan_cache_dir
 
 # Inject system trust store for corporate proxies/SSL inspection
 truststore.inject_into_ssl()
@@ -102,6 +102,283 @@ def transcription_worker(result_queue, audio_path, model_name, language_code, la
         result_queue.put(("error", str(e)))
 
 
+class CacheManagerDialog(ctk.CTkToplevel):
+    """Dialog for managing Hugging Face model cache."""
+    
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+        
+        self.title("Model Cache Manager")
+        self.geometry("700x450")
+        self.resizable(True, True)
+        
+        # Make modal
+        self.transient(parent)
+        self.grab_set()
+        
+        # Header
+        self.header_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.header_frame.pack(fill="x", padx=20, pady=(20, 10))
+        
+        self.title_label = ctk.CTkLabel(
+            self.header_frame, 
+            text="Downloaded Models (Hugging Face Cache)",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        self.title_label.pack(side="left")
+        
+        self.refresh_button = ctk.CTkButton(
+            self.header_frame,
+            text="Refresh",
+            command=self.refresh_cache_list,
+            width=80
+        )
+        self.refresh_button.pack(side="right")
+        
+        # Cache location info
+        self.cache_path_label = ctk.CTkLabel(
+            self,
+            text=f"Cache Location: ~/.cache/huggingface/hub",
+            text_color="gray",
+            font=ctk.CTkFont(size=12)
+        )
+        self.cache_path_label.pack(fill="x", padx=20, pady=(0, 10))
+        
+        # Scrollable frame for model list
+        self.scroll_frame = ctk.CTkScrollableFrame(self, width=650, height=280)
+        self.scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Total size label
+        self.total_size_label = ctk.CTkLabel(
+            self,
+            text="Total: Calculating...",
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        self.total_size_label.pack(pady=(5, 10))
+        
+        # Close button
+        self.close_button = ctk.CTkButton(
+            self,
+            text="Close",
+            command=self.destroy,
+            width=100
+        )
+        self.close_button.pack(pady=(0, 20))
+        
+        # Load cache info
+        self.model_checkboxes = {}
+        self.refresh_cache_list()
+        
+        # Center window
+        self.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.winfo_width() // 2)
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.winfo_height() // 2)
+        self.geometry(f"+{x}+{y}")
+    
+    def format_size(self, size_bytes):
+        """Format size in bytes to human readable string."""
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB"
+        elif size_bytes < 1024 * 1024 * 1024:
+            return f"{size_bytes / (1024 * 1024):.1f} MB"
+        else:
+            return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+    
+    def refresh_cache_list(self):
+        """Refresh the list of cached models."""
+        # Clear existing widgets
+        for widget in self.scroll_frame.winfo_children():
+            widget.destroy()
+        self.model_checkboxes.clear()
+        
+        try:
+            cache_info = scan_cache_dir()
+            
+            # Filter for whisper models (mlx-community)
+            whisper_repos = [repo for repo in cache_info.repos 
+                           if 'whisper' in repo.repo_id.lower() or 'mlx-community' in repo.repo_id.lower()]
+            
+            if not whisper_repos:
+                no_model_label = ctk.CTkLabel(
+                    self.scroll_frame,
+                    text="No Whisper models found in cache.\n\nModels will appear here after downloading.",
+                    text_color="gray"
+                )
+                no_model_label.pack(pady=50)
+                self.total_size_label.configure(text="Total: 0 MB")
+                return
+            
+            total_size = 0
+            
+            for repo in sorted(whisper_repos, key=lambda r: r.size_on_disk, reverse=True):
+                total_size += repo.size_on_disk
+                
+                # Create frame for each model
+                model_frame = ctk.CTkFrame(self.scroll_frame)
+                model_frame.pack(fill="x", padx=5, pady=5)
+                model_frame.grid_columnconfigure(1, weight=1)
+                
+                # Checkbox for selection
+                var = ctk.BooleanVar(value=False)
+                checkbox = ctk.CTkCheckBox(
+                    model_frame,
+                    text="",
+                    variable=var,
+                    width=20
+                )
+                checkbox.grid(row=0, column=0, padx=(10, 5), pady=10)
+                
+                # Store reference for deletion
+                self.model_checkboxes[repo.repo_id] = {
+                    'var': var,
+                    'repo': repo
+                }
+                
+                # Model name and size
+                info_frame = ctk.CTkFrame(model_frame, fg_color="transparent")
+                info_frame.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+                
+                name_label = ctk.CTkLabel(
+                    info_frame,
+                    text=repo.repo_id,
+                    font=ctk.CTkFont(size=13, weight="bold"),
+                    anchor="w"
+                )
+                name_label.pack(fill="x", anchor="w")
+                
+                size_label = ctk.CTkLabel(
+                    info_frame,
+                    text=f"Size: {self.format_size(repo.size_on_disk)}",
+                    text_color="gray",
+                    font=ctk.CTkFont(size=12),
+                    anchor="w"
+                )
+                size_label.pack(fill="x", anchor="w")
+                
+                # Delete button for individual model
+                delete_btn = ctk.CTkButton(
+                    model_frame,
+                    text="Delete",
+                    command=lambda r=repo: self.delete_single_model(r),
+                    width=70,
+                    height=28,
+                    fg_color="#DC2626",
+                    hover_color="#B91C1C"
+                )
+                delete_btn.grid(row=0, column=2, padx=10, pady=10)
+            
+            # Update total size
+            self.total_size_label.configure(text=f"Total: {self.format_size(total_size)}")
+            
+            # Add delete selected button if there are models
+            if whisper_repos:
+                delete_selected_btn = ctk.CTkButton(
+                    self.scroll_frame,
+                    text="Delete Selected",
+                    command=self.delete_selected_models,
+                    fg_color="#DC2626",
+                    hover_color="#B91C1C"
+                )
+                delete_selected_btn.pack(pady=15)
+                
+        except Exception as e:
+            error_label = ctk.CTkLabel(
+                self.scroll_frame,
+                text=f"Error loading cache: {e}",
+                text_color="red"
+            )
+            error_label.pack(pady=50)
+    
+    def delete_single_model(self, repo):
+        """Delete a single model from cache."""
+        confirm = messagebox.askyesno(
+            "Confirm Delete",
+            f"Are you sure you want to delete:\n\n{repo.repo_id}\n\nSize: {self.format_size(repo.size_on_disk)}\n\nThis action cannot be undone.",
+            parent=self
+        )
+        
+        if confirm:
+            try:
+                # Get all revision commit hashes for this repo
+                revision_hashes = [rev.commit_hash for rev in repo.revisions]
+                
+                # Delete using the cache API
+                cache_info = scan_cache_dir()
+                delete_strategy = cache_info.delete_revisions(*revision_hashes)
+                
+                # Show what will be freed
+                freed_size = delete_strategy.expected_freed_size
+                
+                # Execute deletion
+                delete_strategy.execute()
+                
+                messagebox.showinfo(
+                    "Deleted",
+                    f"Successfully deleted {repo.repo_id}\n\nFreed: {self.format_size(freed_size)}",
+                    parent=self
+                )
+                
+                # Refresh the list
+                self.refresh_cache_list()
+                
+                # Update cache status in main window
+                self.parent.on_model_change(self.parent.model_var.get())
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete model:\n{e}", parent=self)
+    
+    def delete_selected_models(self):
+        """Delete all selected models."""
+        selected = [(repo_id, data) for repo_id, data in self.model_checkboxes.items() 
+                    if data['var'].get()]
+        
+        if not selected:
+            messagebox.showwarning("No Selection", "Please select models to delete.", parent=self)
+            return
+        
+        # Calculate total size
+        total_size = sum(data['repo'].size_on_disk for _, data in selected)
+        model_names = "\n".join([repo_id for repo_id, _ in selected])
+        
+        confirm = messagebox.askyesno(
+            "Confirm Delete",
+            f"Are you sure you want to delete {len(selected)} model(s)?\n\n{model_names}\n\nTotal size: {self.format_size(total_size)}\n\nThis action cannot be undone.",
+            parent=self
+        )
+        
+        if confirm:
+            try:
+                # Collect all revision hashes
+                all_hashes = []
+                for _, data in selected:
+                    for rev in data['repo'].revisions:
+                        all_hashes.append(rev.commit_hash)
+                
+                # Delete using the cache API
+                cache_info = scan_cache_dir()
+                delete_strategy = cache_info.delete_revisions(*all_hashes)
+                freed_size = delete_strategy.expected_freed_size
+                delete_strategy.execute()
+                
+                messagebox.showinfo(
+                    "Deleted",
+                    f"Successfully deleted {len(selected)} model(s)\n\nFreed: {self.format_size(freed_size)}",
+                    parent=self
+                )
+                
+                # Refresh the list
+                self.refresh_cache_list()
+                
+                # Update cache status in main window
+                self.parent.on_model_change(self.parent.model_var.get())
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete models:\n{e}", parent=self)
+
+
 class App(ctk.CTk):
     MODEL_INFO = {
         "mlx-community/whisper-tiny": "Speed: ★★★★★ | Accuracy: ★☆☆☆☆ (Fastest, MLX Optimized)",
@@ -184,10 +461,13 @@ class App(ctk.CTk):
         self.local_model_button.grid(row=0, column=2, padx=(0, 10), sticky="w")
 
         self.help_button = ctk.CTkButton(self.model_frame, text="?", command=self.show_help, width=30, fg_color="gray")
-        self.help_button.grid(row=0, column=3, padx=(0, 10), sticky="w")
+        self.help_button.grid(row=0, column=3, padx=(0, 5), sticky="w")
+
+        self.cache_manage_button = ctk.CTkButton(self.model_frame, text="Manage Cache", command=self.show_cache_manager, width=100, fg_color="#6B7280")
+        self.cache_manage_button.grid(row=0, column=4, padx=(0, 10), sticky="w")
 
         self.cache_status_label = ctk.CTkLabel(self.model_frame, text="Checking...", text_color="gray")
-        self.cache_status_label.grid(row=0, column=4, padx=(0, 0), sticky="w")
+        self.cache_status_label.grid(row=0, column=5, padx=(0, 0), sticky="w")
 
         # Row 1: Path/URL Display
         self.path_label = ctk.CTkLabel(self.model_frame, text="Source:", font=ctk.CTkFont(size=12))
@@ -203,11 +483,11 @@ class App(ctk.CTk):
             hover_color=("gray85", "gray25"),
             command=self.open_source
         )
-        self.model_source_link.grid(row=1, column=1, columnspan=4, padx=(0, 0), pady=(5, 0), sticky="ew")
+        self.model_source_link.grid(row=1, column=1, columnspan=5, padx=(0, 0), pady=(5, 0), sticky="ew")
 
         # Row 2: Model Info
         self.model_info_label = ctk.CTkLabel(self.model_frame, text="", text_color="gray", font=ctk.CTkFont(size=12))
-        self.model_info_label.grid(row=2, column=0, columnspan=5, padx=(0, 10), pady=(5, 0), sticky="w")
+        self.model_info_label.grid(row=2, column=0, columnspan=6, padx=(0, 10), pady=(5, 0), sticky="w")
 
         # Variables
         self.selected_file = None
@@ -359,6 +639,10 @@ class App(ctk.CTk):
             self.log_message(f"Found {len(found_paths)} models in the folder. You can switch between them in the dropdown.")
         elif target_path != folder_path:
             self.log_message(f"(Auto-detected model inside subfolder)")
+
+    def show_cache_manager(self):
+        """Show cache management dialog."""
+        CacheManagerDialog(self)
 
     def show_help(self):
         help_text = (
