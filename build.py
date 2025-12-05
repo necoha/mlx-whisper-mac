@@ -115,6 +115,19 @@ if os.path.exists(info_plist_path):
         plistlib.dump(plist, f)
     print(f"  Set version to: {APP_VERSION}")
 
+# Ad-hoc code signing to prevent Gatekeeper from stripping files
+print("Signing application with ad-hoc signature...")
+app_path_for_signing = os.path.join(dist_dir, f"{app_name}.app")
+try:
+    # Sign all dylibs and binaries first (deep signing)
+    subprocess.run([
+        "codesign", "--force", "--deep", "--sign", "-",
+        app_path_for_signing
+    ], check=True)
+    print("  Ad-hoc signing completed successfully")
+except subprocess.CalledProcessError as e:
+    print(f"  Warning: Ad-hoc signing failed: {e}")
+
 print("Creating DMG Installer...")
 
 dist_dir = "dist"
