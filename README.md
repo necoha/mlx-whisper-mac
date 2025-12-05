@@ -59,6 +59,20 @@ You can package the application into a standard macOS `.app` bundle.
 
 You can drag this app to your Applications folder. **Note:** You still need `ffmpeg` installed via Homebrew.
 
+## Models
+
+### Automatic Download
+By default, the application automatically downloads the selected model from Hugging Face when you first use it. The models are cached locally for future use.
+
+### Manual Download (Offline Mode)
+If you are in an environment with restricted internet access (e.g., corporate firewall) or want to manage models manually:
+
+1.  Visit the [Hugging Face repository](https://huggingface.co/mlx-community) for the desired model (e.g., `mlx-community/whisper-large-v3`).
+2.  Download all files in the repository (or clone it) to a local folder.
+    *   Ensure `config.json`, `model.safetensors` (or `weights.npz`), and `tokenizer.json` are included.
+3.  In the app, click the **"Load Local..."** button (green button).
+4.  Select the folder where you downloaded the model files.
+
 ## Troubleshooting
 
 *   **"FFmpeg not found"**: Make sure you installed it with `brew install ffmpeg`. The app looks in `/opt/homebrew/bin`.
