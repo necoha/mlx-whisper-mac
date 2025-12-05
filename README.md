@@ -81,6 +81,10 @@ If you are in an environment with restricted internet access (e.g., corporate fi
     xattr -cr /Applications/MLXWhisperTranscriber.app
     ```
 
+## Author
+
+**necoha** - [GitHub](https://github.com/necoha)
+
 ## License
 
 MIT
