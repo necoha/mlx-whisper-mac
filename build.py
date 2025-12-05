@@ -4,6 +4,10 @@ import shutil
 import customtkinter
 import subprocess
 import importlib.util
+import plistlib
+
+# Application version
+APP_VERSION = "1.0.10"
 
 # Get customtkinter path to include its data files
 ctk_path = os.path.dirname(customtkinter.__file__)
@@ -94,6 +98,22 @@ if os.path.exists(source_metallib):
         os.remove(target_mlx)
     shutil.copy2(source_metallib, target_mlx)
     print(f"  Copied: {target_mlx}")
+
+# Update Info.plist with version information
+print("Updating Info.plist with version information...")
+info_plist_path = os.path.join(dist_dir, f"{app_name}.app", "Contents", "Info.plist")
+if os.path.exists(info_plist_path):
+    with open(info_plist_path, 'rb') as f:
+        plist = plistlib.load(f)
+    
+    plist['CFBundleShortVersionString'] = APP_VERSION
+    plist['CFBundleVersion'] = APP_VERSION
+    plist['CFBundleIdentifier'] = 'com.necoha.mlxwhispertranscriber'
+    plist['NSHumanReadableCopyright'] = f'Copyright © 2025 necoha. All rights reserved.'
+    
+    with open(info_plist_path, 'wb') as f:
+        plistlib.dump(plist, f)
+    print(f"  Set version to: {APP_VERSION}")
 
 print("Creating DMG Installer...")
 

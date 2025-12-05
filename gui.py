@@ -392,15 +392,25 @@ class App(ctk.CTk):
 
     LANGUAGE_CODES = {
         "English": "en",
-        "Japanese": "ja",
         "Chinese": "zh",
-        "Korean": "ko",
-        "Spanish": "es",
-        "French": "fr",
         "German": "de",
-        "Italian": "it",
+        "Spanish": "es",
         "Russian": "ru",
-        "Portuguese": "pt"
+        "French": "fr",
+        "Portuguese": "pt",
+        "Japanese": "ja",
+        "Korean": "ko",
+        "Italian": "it",
+        "Dutch": "nl",
+        "Polish": "pl",
+        "Turkish": "tr",
+        "Vietnamese": "vi",
+        "Indonesian": "id",
+        "Thai": "th",
+        "Arabic": "ar",
+        "Hindi": "hi",
+        "Swedish": "sv",
+        "Czech": "cs",
     }
 
     def __init__(self):
