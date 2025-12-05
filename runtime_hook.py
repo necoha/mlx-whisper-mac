@@ -84,6 +84,16 @@ def setup_mlx_libraries():
     
     log(f"Source mlx dir: {src_mlx_dir}")
     
+    # List contents of source mlx dir for debugging
+    try:
+        src_contents = os.listdir(src_mlx_dir)
+        log(f"Source mlx contents: {src_contents}")
+        src_lib_dir = os.path.join(src_mlx_dir, "lib")
+        if os.path.exists(src_lib_dir):
+            log(f"Source lib contents: {os.listdir(src_lib_dir)}")
+    except Exception as e:
+        log(f"Could not list source dir: {e}")
+    
     # Find target mlx directories in the bundle
     target_mlx_dirs = []
     for base in [contents_dir, bundle_dir]:
