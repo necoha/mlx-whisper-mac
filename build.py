@@ -7,7 +7,7 @@ import importlib.util
 import plistlib
 
 # Application version
-APP_VERSION = "1.0.13"
+APP_VERSION = "1.0.14"
 
 # Get customtkinter path to include its data files
 ctk_path = os.path.dirname(customtkinter.__file__)
@@ -73,17 +73,18 @@ source_metallib = os.path.join(mlx_lib_dir, "mlx.metallib")
 
 print("Setting up dual macOS version support...")
 
-# Copy macOS 15 mlx zip to Resources (to avoid Gatekeeper stripping)
-macos15_mlx_zip = "macos15_mlx.zip"
-macos15_mlx_dest_zip = os.path.join(resources_dir, "macos15_mlx.zip")
+# Copy macOS 15 mlx folder to Frameworks (to avoid Gatekeeper stripping)
+# We use Frameworks because Gatekeeper is less aggressive there for signed apps,
+# or at least it's a standard place for libraries.
+macos15_mlx_dest = os.path.join(frameworks_dir, "macos15_mlx")
 
-if os.path.exists(macos15_mlx_zip):
-    if os.path.exists(macos15_mlx_dest_zip):
-        os.remove(macos15_mlx_dest_zip)
-    shutil.copy2(macos15_mlx_zip, macos15_mlx_dest_zip)
-    print(f"  Copied macOS 15 mlx zip to: {macos15_mlx_dest_zip}")
+if os.path.exists(macos15_mlx_src):
+    if os.path.exists(macos15_mlx_dest):
+        shutil.rmtree(macos15_mlx_dest)
+    shutil.copytree(macos15_mlx_src, macos15_mlx_dest)
+    print(f"  Copied macOS 15 mlx package to: {macos15_mlx_dest}")
 else:
-    print(f"  Warning: macOS 15 mlx zip not found: {macos15_mlx_zip}")
+    print(f"  Warning: macOS 15 mlx source not found: {macos15_mlx_src}")
 
 if os.path.exists(source_metallib):
     print("Ensuring metallib files are in place...")
@@ -116,6 +117,28 @@ if os.path.exists(info_plist_path):
     with open(info_plist_path, 'wb') as f:
         plistlib.dump(plist, f)
     print(f"  Set version to: {APP_VERSION}")
+
+# Remove .dist-info directories to avoid signing errors
+print("Removing .dist-info directories...")
+contents_dir = os.path.join(dist_dir, f"{app_name}.app", "Contents")
+for root, dirs, files in os.walk(contents_dir, topdown=True):
+    # Remove files and broken symlinks
+    for f in files:
+        if f.endswith(".dist-info"):
+            dist_info_path = os.path.join(root, f)
+            print(f"  Removing file/link: {dist_info_path}")
+            os.remove(dist_info_path)
+            
+    # Remove directories
+    for d in list(dirs):
+        if d.endswith(".dist-info"):
+            dist_info_path = os.path.join(root, d)
+            print(f"  Removing dir: {dist_info_path}")
+            if os.path.islink(dist_info_path):
+                os.unlink(dist_info_path)
+            else:
+                shutil.rmtree(dist_info_path)
+            dirs.remove(d) # Prevent recursion
 
 # Ad-hoc code signing to prevent Gatekeeper from stripping files
 print("Signing application with ad-hoc signature...")

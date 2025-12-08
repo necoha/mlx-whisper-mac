@@ -7,8 +7,6 @@ import os
 import sys
 import platform
 import shutil
-import zipfile
-import tempfile
 
 def log(msg):
     """Write to stderr for debugging."""
@@ -38,7 +36,7 @@ def setup_mlx_libraries():
         log("macOS 26+, using bundled libraries")
         return
     
-    log("macOS < 26, need to use compatible mlx package")
+    log("macOS < 26, need to replace mlx package")
     
     # Get app bundle paths
     bundle_dir = sys._MEIPASS
@@ -54,53 +52,99 @@ def setup_mlx_libraries():
     
     log(f"Contents dir: {contents_dir}")
     
-    # Look for macos15_mlx.zip in Resources
-    zip_path = os.path.join(contents_dir, "Resources", "macos15_mlx.zip")
+    # Look for macos15_mlx directory (contains complete mlx package for macOS 15)
+    possible_macos15_dirs = [
+        os.path.join(bundle_dir, "macos15_mlx"),
+        os.path.join(contents_dir, "Resources", "macos15_mlx"),
+        os.path.join(contents_dir, "Frameworks", "macos15_mlx"),
+    ]
     
-    if not os.path.exists(zip_path):
-        log(f"ERROR: macos15_mlx.zip not found at {zip_path}")
-        # Fallback check in bundle_dir
-        zip_path = os.path.join(bundle_dir, "macos15_mlx.zip")
-        if not os.path.exists(zip_path):
-             log(f"ERROR: macos15_mlx.zip not found at {zip_path} either")
-             return
-
-    log(f"Found zip: {zip_path}")
+    macos15_mlx_dir = None
+    for d in possible_macos15_dirs:
+        log(f"Checking: {d} exists={os.path.exists(d)}")
+        if os.path.exists(d):
+            macos15_mlx_dir = d
+            break
     
-    # Extract to a temporary directory
-    # We use a fixed name based on version to avoid re-extracting if possible, 
-    # but /tmp is usually cleaned up.
-    extract_root = os.path.join(tempfile.gettempdir(), "mlx_whisper_macos15_v1.0.13")
-    
-    # Check if already extracted and valid? 
-    # For safety, we can just overwrite or check if dir exists.
-    # Since /tmp is per-user usually, this is fine.
-    
-    if not os.path.exists(extract_root):
-        log(f"Extracting to {extract_root}...")
+    if not macos15_mlx_dir:
+        log("ERROR: macos15_mlx directory not found!")
         try:
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_root)
-            log("Extraction complete")
+            log(f"Contents of _MEIPASS: {os.listdir(bundle_dir)[:30]}...")
         except Exception as e:
-            log(f"Extraction failed: {e}")
-            return
-    else:
-        log(f"Using existing extraction at {extract_root}")
-
-    # The zip structure is macos15_mlx/mlx/...
-    # We want to add the directory containing 'mlx' package to sys.path.
-    # That directory is extract_root/macos15_mlx
-    
-    site_packages = os.path.join(extract_root, "macos15_mlx")
-    if not os.path.exists(os.path.join(site_packages, "mlx")):
-        log(f"ERROR: mlx package not found in {site_packages}")
+            log(f"Could not list _MEIPASS: {e}")
         return
+    
+    log(f"Found macos15_mlx dir: {macos15_mlx_dir}")
+    
+    # Source mlx directory (complete macOS 15 compatible mlx package)
+    src_mlx_dir = os.path.join(macos15_mlx_dir, "mlx")
+    if not os.path.exists(src_mlx_dir):
+        log(f"ERROR: mlx directory not found in {macos15_mlx_dir}")
+        return
+    
+    log(f"Source mlx dir: {src_mlx_dir}")
+    
+    # List contents of source mlx dir for debugging
+    try:
+        src_contents = os.listdir(src_mlx_dir)
+        log(f"Source mlx contents: {src_contents}")
+        src_lib_dir = os.path.join(src_mlx_dir, "lib")
+        if os.path.exists(src_lib_dir):
+            log(f"Source lib contents: {os.listdir(src_lib_dir)}")
+    except Exception as e:
+        log(f"Could not list source dir: {e}")
+    
+    # Find target mlx directories in the bundle
+    target_mlx_dirs = []
+    for base in [contents_dir, bundle_dir]:
+        for root, dirs, files in os.walk(base):
+            if os.path.basename(root) == 'mlx' and 'core.cpython-312-darwin.so' in files:
+                target_mlx_dirs.append(root)
+    
+    # Also check common locations
+    common_paths = [
+        os.path.join(contents_dir, "Frameworks", "mlx"),
+        os.path.join(contents_dir, "Resources", "mlx"),
+        os.path.join(bundle_dir, "mlx"),
+    ]
+    for p in common_paths:
+        if os.path.exists(p) and p not in target_mlx_dirs:
+            target_mlx_dirs.append(p)
+    
+    log(f"Found target mlx dirs: {target_mlx_dirs}")
+    
+    # Replace files in each target directory
+    replaced_count = 0
+    for target_dir in target_mlx_dirs:
+        log(f"Processing target: {target_dir}")
         
-    # Prepend to sys.path to take precedence over bundled mlx
-    sys.path.insert(0, site_packages)
-    log(f"Added {site_packages} to sys.path")
-    log(f"sys.path[0]: {sys.path[0]}")
+        # Key files to replace
+        files_to_replace = [
+            ("core.cpython-312-darwin.so", "core.cpython-312-darwin.so"),
+            ("lib/libmlx.dylib", "lib/libmlx.dylib"),
+            ("lib/mlx.metallib", "lib/mlx.metallib"),
+        ]
+        
+        for src_rel, target_rel in files_to_replace:
+            src_file = os.path.join(src_mlx_dir, src_rel)
+            target_file = os.path.join(target_dir, target_rel)
+            
+            if not os.path.exists(src_file):
+                log(f"  Source not found: {src_file}")
+                continue
+            
+            if os.path.exists(target_file) or os.path.islink(target_file):
+                try:
+                    os.remove(target_file)
+                    shutil.copy2(src_file, target_file)
+                    log(f"  Replaced: {target_rel}")
+                    replaced_count += 1
+                except Exception as e:
+                    log(f"  ERROR replacing {target_rel}: {e}")
+            else:
+                log(f"  Target not found: {target_file}")
+    
+    log(f"Replacement complete. {replaced_count} files replaced.")
 
 # Execute on import (before main app starts)
 setup_mlx_libraries()
