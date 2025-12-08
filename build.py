@@ -7,7 +7,7 @@ import importlib.util
 import plistlib
 
 # Application version
-APP_VERSION = "1.0.14"
+APP_VERSION = "1.0.15"
 
 # Get customtkinter path to include its data files
 ctk_path = os.path.dirname(customtkinter.__file__)
@@ -140,18 +140,24 @@ for root, dirs, files in os.walk(contents_dir, topdown=True):
                 shutil.rmtree(dist_info_path)
             dirs.remove(d) # Prevent recursion
 
-# Ad-hoc code signing to prevent Gatekeeper from stripping files
-print("Signing application with ad-hoc signature...")
+# Code signing
+SIGNING_IDENTITY = "Developer ID Application: Kazuki Tsutsumi (PJ6C64J6UP)"
+print(f"Signing application with identity: {SIGNING_IDENTITY}...")
 app_path_for_signing = os.path.join(dist_dir, f"{app_name}.app")
 try:
     # Sign all dylibs and binaries first (deep signing)
+    # Note: --options runtime is required for notarization
+    # Note: --entitlements is required for JIT (Numba/LLVM)
+    entitlements_path = "entitlements.plist"
     subprocess.run([
-        "codesign", "--force", "--deep", "--sign", "-",
+        "codesign", "--force", "--deep", "--options", "runtime", "--timestamp", 
+        "--entitlements", entitlements_path,
+        "--sign", SIGNING_IDENTITY,
         app_path_for_signing
     ], check=True)
-    print("  Ad-hoc signing completed successfully")
+    print("  App signing completed successfully")
 except subprocess.CalledProcessError as e:
-    print(f"  Warning: Ad-hoc signing failed: {e}")
+    print(f"  Warning: App signing failed: {e}")
 
 print("Creating DMG Installer...")
 
@@ -187,6 +193,17 @@ subprocess.run([
     "-format", "UDZO",
     dmg_path
 ], check=True)
+
+# Sign DMG
+print("Signing DMG...")
+try:
+    subprocess.run([
+        "codesign", "--sign", SIGNING_IDENTITY, "--timestamp",
+        dmg_path
+    ], check=True)
+    print("  DMG signing completed successfully")
+except subprocess.CalledProcessError as e:
+    print(f"  Warning: DMG signing failed: {e}")
 
 # Cleanup
 shutil.rmtree(tmp_dmg_dir)
