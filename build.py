@@ -7,7 +7,7 @@ import importlib.util
 import plistlib
 
 # Application version
-APP_VERSION = "1.0.11"
+APP_VERSION = "1.0.13"
 
 # Get customtkinter path to include its data files
 ctk_path = os.path.dirname(customtkinter.__file__)
@@ -73,21 +73,17 @@ source_metallib = os.path.join(mlx_lib_dir, "mlx.metallib")
 
 print("Setting up dual macOS version support...")
 
-# Copy complete macOS 15 mlx package to Frameworks (better for libraries)
-macos15_mlx_dest = os.path.join(frameworks_dir, "macos15_mlx")
-if os.path.exists(macos15_mlx_src):
-    if os.path.exists(macos15_mlx_dest):
-        shutil.rmtree(macos15_mlx_dest)
-    shutil.copytree(macos15_mlx_src, macos15_mlx_dest)
-    
-    # Remove .dist-info directories to avoid codesign issues
-    for item in os.listdir(macos15_mlx_dest):
-        if item.endswith(".dist-info"):
-            shutil.rmtree(os.path.join(macos15_mlx_dest, item))
-            
-    print(f"  Copied macOS 15 mlx package to: {macos15_mlx_dest}")
+# Copy macOS 15 mlx zip to Resources (to avoid Gatekeeper stripping)
+macos15_mlx_zip = "macos15_mlx.zip"
+macos15_mlx_dest_zip = os.path.join(resources_dir, "macos15_mlx.zip")
+
+if os.path.exists(macos15_mlx_zip):
+    if os.path.exists(macos15_mlx_dest_zip):
+        os.remove(macos15_mlx_dest_zip)
+    shutil.copy2(macos15_mlx_zip, macos15_mlx_dest_zip)
+    print(f"  Copied macOS 15 mlx zip to: {macos15_mlx_dest_zip}")
 else:
-    print(f"  Warning: macOS 15 mlx package not found: {macos15_mlx_src}")
+    print(f"  Warning: macOS 15 mlx zip not found: {macos15_mlx_zip}")
 
 if os.path.exists(source_metallib):
     print("Ensuring metallib files are in place...")

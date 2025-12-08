@@ -10,3 +10,4 @@ AppIcon.iconset/
 # Large binary files - download from release assets
 *.metallib
 libmlx_macos15.dylib
+macos15_mlx.zip
