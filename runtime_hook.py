@@ -47,37 +47,52 @@ def setup_mlx_path():
         return
     
     log("macOS < 26, switching to macos15_mlx package")
+    log(f"sys.executable: {sys.executable}")
+    log(f"sys.frozen: {getattr(sys, 'frozen', 'Not Set')}")
+    log(f"sys._MEIPASS: {getattr(sys, '_MEIPASS', 'Not Set')}")
     
-    # Determine paths
+    # Potential paths to search for macos15_mlx
+    candidate_paths = []
+    
+    # 1. Check relative to executable (Onedir standard)
+    # sys.executable -> Contents/MacOS/MLXWhisperTranscriber
+    app_dir = os.path.dirname(sys.executable)
+    contents_dir = os.path.dirname(app_dir)
+    resources_dir = os.path.join(contents_dir, "Resources")
+    candidate_paths.append(os.path.join(resources_dir, "macos15_mlx"))
+    
+    # 2. Check inside _MEIPASS (Onefile or specific temp dirs)
     if hasattr(sys, '_MEIPASS'):
-        # Onefile (not used currently, but for completeness)
-        bundle_dir = sys._MEIPASS
-    else:
-        # Onedir
-        # sys.executable -> Contents/MacOS/MLXWhisperTranscriber
-        app_dir = os.path.dirname(sys.executable)
-        contents_dir = os.path.dirname(app_dir)
-        # We put macos15_mlx in Contents/Resources/macos15_mlx
+        candidate_paths.append(os.path.join(sys._MEIPASS, "macos15_mlx"))
         
-        resources_dir = os.path.join(contents_dir, "Resources")
-        macos15_mlx_path = os.path.join(resources_dir, "macos15_mlx")
-        
-        if os.path.exists(macos15_mlx_path):
-            log(f"Found macos15_mlx at: {macos15_mlx_path}")
-            # Prepend to sys.path so it takes precedence over standard library
-            sys.path.insert(0, macos15_mlx_path)
-            log("Added to sys.path[0]")
+    # 3. Check Frameworks just in case
+    frameworks_dir = os.path.join(contents_dir, "Frameworks")
+    candidate_paths.append(os.path.join(frameworks_dir, "macos15_mlx"))
+
+    found_path = None
+    for path in candidate_paths:
+        log(f"Checking path: {path}")
+        if os.path.exists(path):
+            found_path = path
+            break
             
-            # Verify
-            try:
-                import importlib.util
-                spec = importlib.util.find_spec("mlx")
-                if spec:
-                    log(f"mlx resolves to: {spec.origin}")
-            except Exception as e:
-                log(f"Could not verify mlx import: {e}")
-        else:
-            log(f"ERROR: macos15_mlx not found at {macos15_mlx_path}")
+    if found_path:
+        log(f"Found macos15_mlx at: {found_path}")
+        # Prepend to sys.path so it takes precedence over standard library
+        sys.path.insert(0, found_path)
+        log("Added to sys.path[0]")
+        
+        # Verify
+        try:
+            import importlib.util
+            spec = importlib.util.find_spec("mlx")
+            if spec:
+                log(f"mlx resolves to: {spec.origin}")
+        except Exception as e:
+            log(f"Could not verify mlx import: {e}")
+    else:
+        log("ERROR: macos15_mlx not found in any candidate path!")
+        log(f"Contents of Resources: {os.listdir(resources_dir) if os.path.exists(resources_dir) else 'Not found'}")
 
 # Execute on import
 setup_mlx_path()
