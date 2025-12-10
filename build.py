@@ -7,7 +7,7 @@ import importlib.util
 import plistlib
 
 # Application version
-APP_VERSION = "1.0.18"
+APP_VERSION = "1.0.19"
 
 # Get customtkinter path to include its data files
 ctk_path = os.path.dirname(customtkinter.__file__)
@@ -87,6 +87,9 @@ if os.path.exists(macos15_mlx_src):
         shutil.rmtree(macos15_mlx_dest)
     shutil.copytree(macos15_mlx_src, macos15_mlx_dest)
     print(f"  Copied macOS 15 mlx package to: {macos15_mlx_dest}")
+    
+    # Ensure the copied files are writable so they can be signed
+    subprocess.run(["chmod", "-R", "u+w", macos15_mlx_dest], check=True)
 else:
     print(f"  Warning: macOS 15 mlx source not found: {macos15_mlx_src}")
 
