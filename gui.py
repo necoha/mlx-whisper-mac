@@ -41,13 +41,28 @@ def transcription_worker(result_queue, audio_path, model_name, language_code, la
     
     # Set up MLX metallib path BEFORE importing mlx_whisper in subprocess
     if getattr(sys, 'frozen', False):
-        bundle_dir = sys._MEIPASS
+        if hasattr(sys, '_MEIPASS'):
+            # Onefile mode
+            bundle_dir = sys._MEIPASS
+        else:
+            # Onedir mode: sys.executable is in Contents/MacOS/MLXWhisperTranscriber
+            # Resources are in Contents/Resources
+            # Frameworks are in Contents/Frameworks
+            app_dir = os.path.dirname(sys.executable)
+            # Go up to Contents
+            contents_dir = os.path.dirname(app_dir)
+            bundle_dir = os.path.join(contents_dir, "Resources")
+            
+        # Check Resources/mlx/lib/mlx.metallib first
         metallib_path = os.path.join(bundle_dir, "mlx", "lib", "mlx.metallib")
+        if not os.path.exists(metallib_path):
+             # Fallback to Resources/default.metallib
+             metallib_path = os.path.join(bundle_dir, "default.metallib")
+             
         if os.path.exists(metallib_path):
             os.environ["MLX_METALLIB_PATH"] = metallib_path
-        alt_metallib_path = os.path.join(bundle_dir, "default.metallib")
-        if os.path.exists(alt_metallib_path) and "MLX_METALLIB_PATH" not in os.environ:
-            os.environ["MLX_METALLIB_PATH"] = alt_metallib_path
+            # Also set DYLD_LIBRARY_PATH to ensure linked libraries are found if needed
+            # os.environ["DYLD_LIBRARY_PATH"] = os.path.join(contents_dir, "Frameworks")
     
     # Re-import necessary modules in the new process
     import mlx_whisper
@@ -753,7 +768,14 @@ class App(ctk.CTk):
 
     def stop_transcription(self):
         if self.process and self.process.is_alive():
+            # Try terminate first (SIGTERM)
             self.process.terminate()
+            # Give it a moment to die
+            self.process.join(timeout=0.5)
+            if self.process.is_alive():
+                # Force kill if still alive (SIGKILL)
+                self.process.kill()
+            
             self.log_message("\n[Stopped] Transcription stopped by user.")
             self.reset_ui()
 
@@ -779,8 +801,22 @@ class App(ctk.CTk):
         else:
             # Process died unexpectedly or finished without sending success/error
             if self.is_transcribing:
-                # self.reset_ui() # Don't reset immediately, might be just empty queue for a moment
-                self.after(100, self.check_queue)
+                # Check if we have any pending messages one last time
+                try:
+                    msg_type, content = self.result_queue.get_nowait()
+                    if msg_type == "success":
+                        self.handle_success(content)
+                        return
+                    elif msg_type == "error":
+                        self.handle_error(content)
+                        return
+                except queue.Empty:
+                    pass
+                    
+                # If still no result, it crashed silently
+                self.log_message("\n[Error] Transcription process terminated unexpectedly.")
+                messagebox.showerror("Error", "Transcription process crashed or was terminated.")
+                self.reset_ui()
 
     def handle_success(self, content):
         text, duration = content
