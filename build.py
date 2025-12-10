@@ -7,7 +7,7 @@ import importlib.util
 import plistlib
 
 # Application version
-APP_VERSION = "1.0.17"
+APP_VERSION = "1.0.18"
 
 # Get customtkinter path to include its data files
 ctk_path = os.path.dirname(customtkinter.__file__)
@@ -79,48 +79,14 @@ if not os.path.exists(source_metallib):
 
 print("Setting up dual macOS version support...")
 
-# Copy macOS 15 mlx folder to Frameworks (to avoid Gatekeeper stripping)
-# We use Frameworks because Gatekeeper is less aggressive there for signed apps,
-# or at least it's a standard place for libraries.
-macos15_mlx_dest = os.path.join(frameworks_dir, "macos15_mlx")
+macos15_mlx_src = "macos15_mlx"
+macos15_mlx_dest = os.path.join(resources_dir, "macos15_mlx")
 
 if os.path.exists(macos15_mlx_src):
     if os.path.exists(macos15_mlx_dest):
         shutil.rmtree(macos15_mlx_dest)
     shutil.copytree(macos15_mlx_src, macos15_mlx_dest)
     print(f"  Copied macOS 15 mlx package to: {macos15_mlx_dest}")
-    
-    # Remove all non-binary files from macos15_mlx to avoid code signing issues
-    # macOS code signing considers source files (.py, .hpp, .pyi etc.) as "code objects" 
-    # Keep only: .so, .dylib, .metallib (actual binary files)
-    print("  Cleaning macos15_mlx for code signing compatibility...")
-    files_removed = 0
-    dirs_removed = 0
-    allowed_extensions = {'.so', '.dylib', '.metallib'}
-    
-    # First pass: remove non-binary files
-    for root, dirs, files in os.walk(macos15_mlx_dest, topdown=False):
-        for f in files:
-            filepath = os.path.join(root, f)
-            ext = os.path.splitext(f)[1].lower()
-            # Keep binary files and compiled Python cache
-            if ext not in allowed_extensions:
-                os.remove(filepath)
-                files_removed += 1
-    
-    # Second pass: remove empty directories (except __pycache__)
-    for root, dirs, files in os.walk(macos15_mlx_dest, topdown=False):
-        for d in dirs:
-            dirpath = os.path.join(root, d)
-            # Remove include directories (contain headers)
-            if d == 'include':
-                shutil.rmtree(dirpath)
-                dirs_removed += 1
-            elif not os.listdir(dirpath):
-                os.rmdir(dirpath)
-                dirs_removed += 1
-    
-    print(f"  Removed {files_removed} non-binary files, {dirs_removed} directories")
 else:
     print(f"  Warning: macOS 15 mlx source not found: {macos15_mlx_src}")
 
