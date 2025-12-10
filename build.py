@@ -83,6 +83,38 @@ if os.path.exists(macos15_mlx_src):
         shutil.rmtree(macos15_mlx_dest)
     shutil.copytree(macos15_mlx_src, macos15_mlx_dest)
     print(f"  Copied macOS 15 mlx package to: {macos15_mlx_dest}")
+    
+    # Remove all non-binary files from macos15_mlx to avoid code signing issues
+    # macOS code signing considers source files (.py, .hpp, .pyi etc.) as "code objects" 
+    # Keep only: .so, .dylib, .metallib (actual binary files)
+    print("  Cleaning macos15_mlx for code signing compatibility...")
+    files_removed = 0
+    dirs_removed = 0
+    allowed_extensions = {'.so', '.dylib', '.metallib'}
+    
+    # First pass: remove non-binary files
+    for root, dirs, files in os.walk(macos15_mlx_dest, topdown=False):
+        for f in files:
+            filepath = os.path.join(root, f)
+            ext = os.path.splitext(f)[1].lower()
+            # Keep binary files and compiled Python cache
+            if ext not in allowed_extensions:
+                os.remove(filepath)
+                files_removed += 1
+    
+    # Second pass: remove empty directories (except __pycache__)
+    for root, dirs, files in os.walk(macos15_mlx_dest, topdown=False):
+        for d in dirs:
+            dirpath = os.path.join(root, d)
+            # Remove include directories (contain headers)
+            if d == 'include':
+                shutil.rmtree(dirpath)
+                dirs_removed += 1
+            elif not os.listdir(dirpath):
+                os.rmdir(dirpath)
+                dirs_removed += 1
+    
+    print(f"  Removed {files_removed} non-binary files, {dirs_removed} directories")
 else:
     print(f"  Warning: macOS 15 mlx source not found: {macos15_mlx_src}")
 
@@ -142,20 +174,71 @@ for root, dirs, files in os.walk(contents_dir, topdown=True):
 
 # Code signing
 SIGNING_IDENTITY = "Developer ID Application: Kazuki Tsutsumi (PJ6C64J6UP)"
+NOTARY_PROFILE = "MLXWhisperNotaryProfile"
 print(f"Signing application with identity: {SIGNING_IDENTITY}...")
 app_path_for_signing = os.path.join(dist_dir, f"{app_name}.app")
+entitlements_path = "entitlements.plist"
+
 try:
-    # Sign all dylibs and binaries first (deep signing)
-    # Note: --options runtime is required for notarization
-    # Note: --entitlements is required for JIT (Numba/LLVM)
-    entitlements_path = "entitlements.plist"
+    # For notarization, we need to sign all Mach-O binaries and metallib files properly
+    
+    print("  Finding and signing all Mach-O binaries...")
+    
+    # Use find and file commands to get all Mach-O binaries
+    find_result = subprocess.run(
+        f'find "{app_path_for_signing}" -type f -exec file {{}} \\; | grep -E "Mach-O|bundle" | cut -d: -f1',
+        shell=True, capture_output=True, text=True
+    )
+    
+    mach_o_files = [f.strip() for f in find_result.stdout.strip().split('\n') if f.strip()]
+    
+    # Also find .metallib files - they need to be signed too
+    metallib_result = subprocess.run(
+        f'find "{app_path_for_signing}" -name "*.metallib" -type f',
+        shell=True, capture_output=True, text=True
+    )
+    metallib_files = [f.strip() for f in metallib_result.stdout.strip().split('\n') if f.strip()]
+    
+    # Combine all files that need signing
+    all_files_to_sign = mach_o_files + metallib_files
+    
+    # Sign each file individually (from deepest to shallowest)
+    all_files_to_sign.sort(key=lambda x: x.count('/'), reverse=True)
+    
+    for filepath in all_files_to_sign:
+        if os.path.islink(filepath):
+            continue
+        try:
+            subprocess.run([
+                "codesign", "--force", "--options", "runtime", "--timestamp",
+                "--entitlements", entitlements_path,
+                "--sign", SIGNING_IDENTITY,
+                filepath
+            ], check=True, capture_output=True)
+        except subprocess.CalledProcessError as e:
+            # Log failed files but continue
+            print(f"    Warning: Could not sign {os.path.basename(filepath)}")
+    
+    print("  Signing app bundle...")
+    # Finally sign the app bundle itself
     subprocess.run([
-        "codesign", "--force", "--deep", "--options", "runtime", "--timestamp", 
+        "codesign", "--force", "--options", "runtime", "--timestamp",
         "--entitlements", entitlements_path,
         "--sign", SIGNING_IDENTITY,
         app_path_for_signing
     ], check=True)
-    print("  App signing completed successfully")
+    
+    # Verify the signature
+    print("  Verifying signature...")
+    verify_result = subprocess.run([
+        "codesign", "--verify", "--deep", "--strict", app_path_for_signing
+    ], capture_output=True, text=True)
+    
+    if verify_result.returncode != 0:
+        print(f"    Warning: Verification issues: {verify_result.stderr}")
+    else:
+        print("  App signing completed successfully")
+        
 except subprocess.CalledProcessError as e:
     print(f"  Warning: App signing failed: {e}")
 
@@ -175,9 +258,11 @@ if os.path.exists(tmp_dmg_dir):
 # Create temp dir for DMG content
 os.makedirs(tmp_dmg_dir)
 
-# Copy App to temp dir
+# Copy App to temp dir using ditto to preserve code signatures and extended attributes
 print(f"Copying {app_name}.app to temporary DMG folder...")
-shutil.copytree(app_path, os.path.join(tmp_dmg_dir, f"{app_name}.app"))
+subprocess.run([
+    "ditto", app_path, os.path.join(tmp_dmg_dir, f"{app_name}.app")
+], check=True)
 
 # Create symlink to /Applications
 print("Creating /Applications link...")
@@ -204,6 +289,34 @@ try:
     print("  DMG signing completed successfully")
 except subprocess.CalledProcessError as e:
     print(f"  Warning: DMG signing failed: {e}")
+
+# Notarize DMG
+print(f"Notarizing DMG using keychain profile '{NOTARY_PROFILE}'...")
+try:
+    result = subprocess.run([
+        "xcrun", "notarytool", "submit", dmg_path,
+        "--keychain-profile", NOTARY_PROFILE,
+        "--wait"
+    ], check=True, capture_output=True, text=True)
+    print(result.stdout)
+    
+    # Check if notarization was successful by looking for "status: Accepted"
+    if "Invalid" in result.stdout or "Rejected" in result.stdout:
+        print("  Warning: Notarization was not accepted. Skipping stapling.")
+    else:
+        print("  Notarization completed. Stapling ticket to DMG...")
+        try:
+            subprocess.run([
+                "xcrun", "stapler", "staple", dmg_path
+            ], check=True)
+            print("  Stapling completed successfully.")
+        except subprocess.CalledProcessError as e2:
+            print(f"  Warning: Stapling failed: {e2}")
+
+except subprocess.CalledProcessError as e:
+    print(f"  Warning: Notarization failed: {e}")
+    print(f"  Please ensure you have created the keychain profile '{NOTARY_PROFILE}' using:")
+    print(f"  xcrun notarytool store-credentials \"{NOTARY_PROFILE}\" --apple-id <YOUR_APPLE_ID> --team-id <YOUR_TEAM_ID> --password <APP_SPECIFIC_PASSWORD>")
 
 # Cleanup
 shutil.rmtree(tmp_dmg_dir)
