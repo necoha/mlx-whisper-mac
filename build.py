@@ -7,7 +7,7 @@ import importlib.util
 import plistlib
 
 # Application version
-APP_VERSION = "1.0.20"
+APP_VERSION = "1.0.21"
 
 # Get customtkinter path to include its data files
 ctk_path = os.path.dirname(customtkinter.__file__)
