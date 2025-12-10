@@ -143,6 +143,22 @@ def setup_mlx_libraries():
                     log(f"  ERROR replacing {target_rel}: {e}")
             else:
                 log(f"  Target not found: {target_file}")
+
+    # Also replace default.metallib in Resources if it exists
+    # This is crucial because libmlx.dylib might look for it there
+    resources_dir = os.path.join(contents_dir, "Resources")
+    default_metallib = os.path.join(resources_dir, "default.metallib")
+    src_metallib = os.path.join(src_mlx_dir, "lib", "mlx.metallib")
+    
+    if os.path.exists(default_metallib) and os.path.exists(src_metallib):
+        log(f"Found default.metallib in Resources, replacing with version from {src_metallib}")
+        try:
+            os.remove(default_metallib)
+            shutil.copy2(src_metallib, default_metallib)
+            log("  Replaced default.metallib")
+            replaced_count += 1
+        except Exception as e:
+            log(f"  ERROR replacing default.metallib: {e}")
     
     log(f"Replacement complete. {replaced_count} files replaced.")
 

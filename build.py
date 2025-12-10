@@ -7,7 +7,7 @@ import importlib.util
 import plistlib
 
 # Application version
-APP_VERSION = "1.0.15"
+APP_VERSION = "1.0.16"
 
 # Get customtkinter path to include its data files
 ctk_path = os.path.dirname(customtkinter.__file__)
@@ -67,9 +67,15 @@ if os.path.exists(default_metallib_path):
 dist_dir = "dist"
 resources_dir = os.path.join(dist_dir, f"{app_name}.app", "Contents", "Resources")
 frameworks_dir = os.path.join(dist_dir, f"{app_name}.app", "Contents", "Frameworks")
-mlx_lib_dir = os.path.join(resources_dir, "mlx", "lib")
+# mlx is in Frameworks/mlx/lib
 frameworks_mlx_lib_dir = os.path.join(frameworks_dir, "mlx", "lib")
-source_metallib = os.path.join(mlx_lib_dir, "mlx.metallib")
+# Try to find mlx.metallib in Frameworks first
+source_metallib = os.path.join(frameworks_mlx_lib_dir, "mlx.metallib")
+
+if not os.path.exists(source_metallib):
+    # Fallback to Resources if not found in Frameworks (unlikely for onedir)
+    print(f"  Warning: mlx.metallib not found in {source_metallib}")
+    source_metallib = os.path.join(resources_dir, "mlx", "lib", "mlx.metallib")
 
 print("Setting up dual macOS version support...")
 
@@ -119,7 +125,7 @@ else:
     print(f"  Warning: macOS 15 mlx source not found: {macos15_mlx_src}")
 
 if os.path.exists(source_metallib):
-    print("Ensuring metallib files are in place...")
+    print(f"Ensuring metallib files are in place (source: {source_metallib})...")
     # Copy to root as default.metallib (required by mlx)
     target_default = os.path.join(resources_dir, "default.metallib")
     if os.path.exists(target_default) or os.path.islink(target_default):
@@ -133,6 +139,9 @@ if os.path.exists(source_metallib):
         os.remove(target_mlx)
     shutil.copy2(source_metallib, target_mlx)
     print(f"  Copied: {target_mlx}")
+else:
+    print(f"  Error: Source metallib not found at {source_metallib}")
+    print(f"  Contents of frameworks/mlx/lib: {os.listdir(frameworks_mlx_lib_dir) if os.path.exists(frameworks_mlx_lib_dir) else 'Not found'}")
 
 # Update Info.plist with version information
 print("Updating Info.plist with version information...")
