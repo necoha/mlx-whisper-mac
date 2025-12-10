@@ -8,21 +8,12 @@ import sys
 import platform
 
 def log(msg):
-    """Write to stderr and a log file for debugging."""
+    """Write to stderr for debugging."""
     try:
         if sys.stderr:
             sys.stderr.write(f"[runtime_hook] {msg}\n")
             sys.stderr.flush()
     except Exception:
-        pass
-        
-    try:
-        log_path = os.path.expanduser("~/Desktop/mlx_whisper_debug.log")
-        with open(log_path, "a") as f:
-            import datetime
-            timestamp = datetime.datetime.now().isoformat()
-            f.write(f"[{timestamp}] [PID:{os.getpid()}] {msg}\n")
-    except:
         pass
 
 def get_macos_version():
