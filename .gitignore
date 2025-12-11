@@ -10,3 +10,4 @@ AppIcon.iconset/
 *.metallib
 libmlx_macos15.dylib
 macos15_mlx.zip
+crash_log.txt
