@@ -1,6 +1,8 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox
+import tkinterdnd2
+from tkinterdnd2 import DND_FILES
 import threading
 import os
 import sys
@@ -394,7 +396,7 @@ class CacheManagerDialog(ctk.CTkToplevel):
                 messagebox.showerror("Error", f"Failed to delete models:\n{e}", parent=self)
 
 
-class App(ctk.CTk):
+class App(ctk.CTk, tkinterdnd2.TkinterDnD.DnDWrapper):
     MODEL_INFO = {
         "mlx-community/whisper-tiny": "Speed: ★★★★★ | Accuracy: ★☆☆☆☆ (Fastest, MLX Optimized)",
         "mlx-community/whisper-base": "Speed: ★★★★☆ | Accuracy: ★★☆☆☆ (Fast, MLX Optimized)",
@@ -430,6 +432,7 @@ class App(ctk.CTk):
 
     def __init__(self):
         super().__init__()
+        self.TkdndVersion = tkinterdnd2.TkinterDnD._require(self)
 
         # Window setup
         self.title("MLX Whisper Transcriber")
@@ -516,6 +519,9 @@ class App(ctk.CTk):
 
         # Variables
         self.selected_file = None
+        self.file_queue = []  # Queue for batch processing
+        self.batch_total_files = 0
+        self.batch_total_duration = 0.0
         self.is_transcribing = False
         self.process = None
         self.result_queue = None
@@ -575,7 +581,39 @@ class App(ctk.CTk):
         # Progress Bar (Indeterminate)
         self.progress_bar = ctk.CTkProgressBar(self.button_frame, width=400, mode="indeterminate")
         # self.progress_bar.pack(pady=10) # Packed only when running
+
+        # Enable Drag & Drop
+        self.drop_target_register(DND_FILES)
+        self.dnd_bind('<<Drop>>', self.drop_file)
+
+    def drop_file(self, event):
+        # Parse dropped files (handles spaces and multiple files)
+        try:
+            files = self.tk.splitlist(event.data)
+        except Exception:
+            # Fallback for simple string
+            files = [event.data]
+
+        if not files:
+            return
+
+        self.file_queue = list(files)
+        self.batch_total_files = len(files)
+        self.batch_total_duration = 0.0
         
+        # Update UI
+        self.file_path_entry.delete(0, "end")
+        if len(files) == 1:
+            self.selected_file = files[0]
+            self.file_path_entry.insert(0, files[0])
+            self.log_message(f"Selected file: {os.path.basename(files[0])}")
+        else:
+            self.selected_file = files[0] # Set first file as primary for now
+            self.file_path_entry.insert(0, f"{len(files)} files selected for batch processing")
+            self.log_message(f"Selected {len(files)} files for batch processing:")
+            for f in files:
+                self.log_message(f" - {os.path.basename(f)}")
+
     def load_config(self):
         """Load configuration from JSON file."""
         if os.path.exists(CONFIG_FILE):
@@ -714,14 +752,26 @@ class App(ctk.CTk):
                 webbrowser.open(self.current_source)
 
     def browse_file(self):
-        file_path = filedialog.askopenfilename(
+        file_paths = filedialog.askopenfilenames(
             filetypes=[("Audio Files", "*.mp3 *.wav *.m4a *.mp4 *.flac"), ("All Files", "*.*")]
         )
-        if file_path:
-            self.selected_file = file_path
+        if file_paths:
+            self.file_queue = list(file_paths)
+            self.batch_total_files = len(file_paths)
+            self.batch_total_duration = 0.0
+            
+            # Update UI
             self.file_path_entry.delete(0, "end")
-            self.file_path_entry.insert(0, file_path)
-            self.log_message(f"Selected file: {os.path.basename(file_path)}")
+            if len(file_paths) == 1:
+                self.selected_file = file_paths[0]
+                self.file_path_entry.insert(0, file_paths[0])
+                self.log_message(f"Selected file: {os.path.basename(file_paths[0])}")
+            else:
+                self.selected_file = file_paths[0] # Set first file as primary for now
+                self.file_path_entry.insert(0, f"{len(file_paths)} files selected for batch processing")
+                self.log_message(f"Selected {len(file_paths)} files for batch processing:")
+                for f in file_paths:
+                    self.log_message(f" - {os.path.basename(f)}")
 
     def log_message(self, message):
         self.log_textbox.configure(state="normal")
@@ -730,10 +780,16 @@ class App(ctk.CTk):
         self.log_textbox.configure(state="disabled")
 
     def start_transcription_thread(self):
-        if not self.selected_file:
+        if not self.file_queue and not self.selected_file:
             messagebox.showwarning("No File", "Please select an audio file first.")
             return
         
+        # If queue is empty but selected_file is set (legacy/manual browse), add it
+        if not self.file_queue and self.selected_file:
+            self.file_queue = [self.selected_file]
+            self.batch_total_files = 1
+            self.batch_total_duration = 0.0
+
         if self.is_transcribing:
             return
 
@@ -745,8 +801,19 @@ class App(ctk.CTk):
         self.progress_bar.pack(pady=10)
         self.progress_bar.start()
 
+        self.process_next_in_queue()
+
+    def process_next_in_queue(self):
+        if not self.file_queue:
+            self.log_message("Batch processing complete.")
+            self.reset_ui()
+            return
+
+        current_file = self.file_queue[0] # Peek, remove on success/error
+        self.log_message(f"\n--- Starting: {os.path.basename(current_file)} ---")
+        
         # Prepare arguments
-        audio_path = self.selected_file
+        audio_path = current_file
         model_name = self.model_var.get()
         language_selection = self.language_var.get()
         language_code = None
@@ -764,6 +831,7 @@ class App(ctk.CTk):
         self.process.start()
 
         # Start polling the queue
+        self.after(100, self.check_queue)
         self.after(100, self.check_queue)
 
     def stop_transcription(self):
@@ -820,6 +888,7 @@ class App(ctk.CTk):
 
     def handle_success(self, content):
         text, duration = content
+        self.batch_total_duration += duration
         
         # Format duration
         minutes, seconds = divmod(duration, 60)
@@ -829,7 +898,8 @@ class App(ctk.CTk):
             time_str = f"{duration:.1f}s"
 
         # Save to file
-        base_name = os.path.splitext(self.selected_file)[0]
+        current_file = self.file_queue[0] if self.file_queue else self.selected_file
+        base_name = os.path.splitext(current_file)[0]
         output_path = f"{base_name}.txt"
         
         try:
@@ -838,12 +908,28 @@ class App(ctk.CTk):
             self.log_message(f"SUCCESS: Transcription saved to:\n{output_path}")
             self.log_message(f"Time taken: {time_str}")
             self.show_transcription_result(text)
-            messagebox.showinfo("Success", f"Transcription completed successfully!\nTime taken: {time_str}")
+            
+            # Only show popup if it's the last file
+            if len(self.file_queue) <= 1:
+                # Format total duration
+                total_minutes, total_seconds = divmod(self.batch_total_duration, 60)
+                if total_minutes > 0:
+                    total_time_str = f"{int(total_minutes)}m {int(total_seconds)}s"
+                else:
+                    total_time_str = f"{self.batch_total_duration:.1f}s"
+                
+                msg = f"Transcription completed successfully!\n\nProcessed: {self.batch_total_files} files\nTotal Time: {total_time_str}"
+                messagebox.showinfo("Batch Complete", msg)
         except Exception as e:
             self.log_message(f"Error saving file: {e}")
             messagebox.showerror("Error", f"Could not save file: {e}")
         
-        self.reset_ui()
+        # Remove processed file from queue
+        if self.file_queue:
+            self.file_queue.pop(0)
+            
+        # Process next
+        self.process_next_in_queue()
 
     def handle_error(self, error_msg):
         if "Expecting value" in error_msg or "JSONDecodeError" in error_msg:
@@ -851,8 +937,21 @@ class App(ctk.CTk):
             error_msg += f"\n\nPossible Cause: Corporate Firewall (Cisco Umbrella) is blocking Hugging Face.\n\nSOLUTION:\n1. Open this URL in your browser:\n{model_url}\n2. Click 'Continue' on the warning page.\n3. Try again."
         
         self.log_message(f"ERROR: {error_msg}")
-        messagebox.showerror("Error", f"An error occurred:\n{error_msg}")
-        self.reset_ui()
+        
+        # If batch processing, ask to continue
+        if len(self.file_queue) > 1:
+            if not messagebox.askyesno("Error", f"An error occurred:\n{error_msg}\n\nContinue with next file?"):
+                self.reset_ui()
+                return
+        else:
+            messagebox.showerror("Error", f"An error occurred:\n{error_msg}")
+            
+        # Remove failed file from queue
+        if self.file_queue:
+            self.file_queue.pop(0)
+            
+        # Process next
+        self.process_next_in_queue()
 
     def log_message_no_newline(self, message):
         self.log_textbox.configure(state="normal")

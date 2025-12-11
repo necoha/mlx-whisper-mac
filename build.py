@@ -2,15 +2,19 @@ import PyInstaller.__main__
 import os
 import shutil
 import customtkinter
+import tkinterdnd2
 import subprocess
 import importlib.util
 import plistlib
 
 # Application version
-APP_VERSION = "1.0.22"
+APP_VERSION = "1.0.26"
 
 # Get customtkinter path to include its data files
 ctk_path = os.path.dirname(customtkinter.__file__)
+
+# Get tkinterdnd2 path to include its data files
+tkdnd_path = os.path.dirname(tkinterdnd2.__file__)
 
 # Get mlx path to include metallib (for macOS 26+)
 mlx_spec = importlib.util.find_spec("mlx")
@@ -45,6 +49,7 @@ args = [
     '--collect-all=mlx',
     '--collect-all=mlx_whisper',
     f'--add-data={ctk_path}:customtkinter',  # Include customtkinter themes/images
+    f'--add-data={tkdnd_path}:tkinterdnd2',  # Include tkinterdnd2 binaries
     '--runtime-hook=runtime_hook.py',  # Run before main app to setup mlx libraries
 ]
 
