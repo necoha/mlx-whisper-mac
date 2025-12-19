@@ -753,7 +753,7 @@ class App(ctk.CTk, tkinterdnd2.TkinterDnD.DnDWrapper):
 
     def browse_file(self):
         file_paths = filedialog.askopenfilenames(
-            filetypes=[("Audio Files", "*.mp3 *.wav *.m4a *.mp4 *.flac"), ("All Files", "*.*")]
+            filetypes=[("Audio/Video Files", "*.mp3 *.wav *.m4a *.mp4 *.flac *.mov"), ("All Files", "*.*")]
         )
         if file_paths:
             self.file_queue = list(file_paths)
